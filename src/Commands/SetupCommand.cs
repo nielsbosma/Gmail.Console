@@ -102,12 +102,16 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
              "External" -- unless this is a Workspace-only tool, in which case
              "Internal" also lets you skip step 6.
 
-          4. Left nav -> Branding. Fill in and Save:
+          4. Left nav -> Branding. These three are the required ones (marked *):
                App name
                User support email
-               Developer contact information (your email, at the bottom)
-             Logo, app domain and authorized domains are all optional for a desktop
-             client.
+               Developer contact information -> Email addresses (at the bottom)
+             Save.
+
+             Leave the app logo, app domain links and authorized domains empty.
+             They are optional, and filling them in is what pushes the project into
+             needing brand verification -- a review measured in weeks, for a consent
+             screen only you will ever see.
 
              Do not skip this. Until Branding is complete, the Audience page shows
              "Your app's OAuth configuration is incomplete" and the "Publish app"
