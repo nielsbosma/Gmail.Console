@@ -357,18 +357,22 @@ footer{border-top:1px solid var(--line);margin-top:20px;padding:22px 0 0;font-fa
 
   <h3>The printed walkthrough</h3>
   <dl class="ms">
-    <dt>1</dt><dd>Open <a href="https://console.cloud.google.com/">console.cloud.google.com</a> and create a project — name it anything, e.g. <em>gmail-cli</em>.</dd>
-    <dt>2</dt><dd><strong>APIs &amp; Services → Library →</strong> search <em>Gmail API</em> → <strong>Enable</strong>.</dd>
-    <dt>3</dt><dd><strong>APIs &amp; Services → OAuth consent screen.</strong> User type <strong>External</strong> — unless this is a Workspace-only tool, in which case <strong>Internal</strong> and you can skip step 5. Fill in app name and support email.</dd>
-    <dt>4</dt><dd>Add the scopes you intend to use. For the default profile: <code>gmail.readonly</code> and <code>gmail.compose</code>. Both are <em>restricted</em> scopes, so Google will show a warning about verification.</dd>
-    <dt>5</dt><dd><strong>Publish the app.</strong> On the consent screen click <strong>Publish app</strong> to move from <em>Testing</em> to <em>In production</em>. Leave it unverified.</dd>
-    <dt>6</dt><dd><strong>Credentials → Create credentials → OAuth client ID → Application type: Desktop app.</strong> Copy the client id and client secret.</dd>
+    <dt>1</dt><dd>Create a project at <a href="https://console.cloud.google.com/projectcreate">console.cloud.google.com/projectcreate</a> — name it anything, e.g. <em>gmail-cli</em>.</dd>
+    <dt>2</dt><dd>Enable the <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com">Gmail API</a> for it.</dd>
+    <dt>3</dt><dd>Open the <strong>Google Auth Platform</strong> at <code>console.cloud.google.com/auth/overview</code>. On a new project this walks you through app name, user support email, audience and contact details. Audience <strong>External</strong> — unless this is a Workspace-only tool, in which case <strong>Internal</strong> also lets you skip step 5.</dd>
+    <dt>4</dt><dd><strong>Data Access → Add or remove scopes.</strong> Add <code>gmail.readonly</code> and <code>gmail.compose</code>, then <em>Update</em> and <em>Save</em>. Both are <em>restricted</em> scopes, so Google will show a warning about verification.</dd>
+    <dt>5</dt><dd><strong>Audience → Publish app.</strong> Publishing status moves from <em>Testing</em> to <em>In production</em>. Leave it unverified.</dd>
+    <dt>6</dt><dd><strong>Clients → Create OAuth client → Application type: Desktop app.</strong> Copy the client ID and client secret.</dd>
     <dt>7</dt><dd>Paste both when <code>gmail setup</code> asks. Then <code>gmail account add work</code>.</dd>
   </dl>
 
+  <div class="note">
+    <p><strong>The console moved.</strong> Any guide that says <em>APIs &amp; Services → OAuth consent screen</em> predates the current Cloud Console. That page is now the <strong>Google Auth Platform</strong>, split across <strong>Branding</strong> (app name and logo), <strong>Audience</strong> (user type, test users, publishing status) and <strong>Data Access</strong> (scopes); OAuth clients moved from <em>Credentials</em> to <strong>Clients</strong>. The walkthrough above is written against the new layout, and <code>gmail setup</code> prints it verbatim.</p>
+  </div>
+
   <div class="trap">
     <span class="tl">Step 5 is the one everybody skips</span>
-    <p>While the consent screen sits in <em>Testing</em>, Google expires every refresh token after <strong>7 days</strong>. The tool works perfectly, then starts failing with <code>invalid_grant</code> a week later — long after you've stopped associating it with setup. Publishing to <em>In production</em> without verification is allowed, keeps refresh tokens alive indefinitely, is capped at 100 users, and costs one extra click-through on the "Google hasn't verified this app" screen at login.</p>
+    <p>While publishing status sits at <em>Testing</em>, Google expires every refresh token after <strong>7 days</strong>. The tool works perfectly, then starts failing with <code>invalid_grant</code> a week later — long after you've stopped associating it with setup. Publishing to <em>In production</em> without verification is allowed, keeps refresh tokens alive indefinitely, is capped at 100 users, and costs one extra click-through on the "Google hasn't verified this app" screen at login.</p>
   </div>
 
   <p>Because that step is invisible from the API — nothing in a token response says which publishing state issued it — <code>setup</code> makes it a checkpoint rather than a paragraph. Step 5 prints the warning above in full, and the command will not store credentials until the answer is <code>y</code>:</p>

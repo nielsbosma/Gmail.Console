@@ -88,10 +88,10 @@ public sealed class DoctorCommand : GmailCommand<DoctorCommand.Settings>
         }
 
         checks.Add(Check("consent_screen", "unverifiable",
-            "Whether your OAuth consent screen is published to 'In production' cannot be read from the API. " +
-            "If accounts stop working with invalid_grant after about a week, this is the cause: a Testing-mode " +
-            "consent screen expires refresh tokens after 7 days.",
-            "Console -> APIs & Services -> OAuth consent screen -> Publish app"));
+            "Whether your app is published to 'In production' cannot be read from the API. " +
+            "If accounts stop working with invalid_grant after about a week, this is the cause: " +
+            "a publishing status of Testing expires refresh tokens after 7 days.",
+            "https://console.cloud.google.com/auth/audience -> Publish app"));
 
         return new Dictionary<string, object?>
         {

@@ -53,8 +53,8 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
             if (!published)
                 throw GmailException.Invalid(
                     "Setup stopped: the OAuth consent screen is still in Testing mode.",
-                    "Refresh tokens issued by a Testing-mode consent screen are revoked by Google after 7 days. " +
-                    "Publish the app first (Console -> APIs & Services -> OAuth consent screen -> Publish app), " +
+                    "Refresh tokens issued while publishing status is Testing are revoked by Google after 7 days. " +
+                    "Publish the app first (Google Auth Platform -> Audience -> Publish app), " +
                     "then run: gmail setup");
         }
 
@@ -87,36 +87,48 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
 
         You need your own Google Cloud OAuth client. This tool does not ship one: a shared
         client would put every installation under one quota and one revocable credential.
-        It takes about two minutes.
+        It takes about five minutes.
 
-          1. Go to https://console.cloud.google.com/ and create a project (any name,
-             e.g. "gmail-cli").
+          1. Create a project (any name, e.g. "gmail-cli"):
+             https://console.cloud.google.com/projectcreate
 
-          2. APIs & Services -> Library -> search "Gmail API" -> Enable.
+          2. Enable the Gmail API for it:
+             https://console.cloud.google.com/apis/library/gmail.googleapis.com
+             -> Enable.
 
-          3. APIs & Services -> OAuth consent screen.
-             User type: External. (Internal if this is a Workspace-only tool -- then you
-             can skip step 5.) Fill in an app name and your email as support contact.
+          3. Open the Google Auth Platform:
+             https://console.cloud.google.com/auth/overview
+             On a new project this walks you through app name, user support email,
+             audience and contact details. Choose audience "External" -- unless this
+             is a Workspace-only tool, in which case "Internal" also lets you skip
+             step 5.
 
-          4. Add the scopes you want:
+          4. Left nav -> Data Access -> "Add or remove scopes". Add these two, then
+             Update and Save:
                https://www.googleapis.com/auth/gmail.readonly     (search and read)
                https://www.googleapis.com/auth/gmail.compose      (drafts and replies)
-             Google will warn that these are "restricted" scopes. That is expected.
+             They will be listed as "restricted". That is expected.
 
-          5. *** Click "Publish app" to move the consent screen from Testing to
-             In production. Leave it unverified. ***
+          5. *** Left nav -> Audience -> "Publish app". ***
+             Publishing status goes from Testing to In production. Leave it unverified.
 
-             This is the step everyone skips. While the consent screen is in Testing,
+             This is the step everyone skips. While publishing status is Testing,
              Google revokes every refresh token after 7 DAYS. Everything works, then
              breaks with invalid_grant a week later, long after you have stopped
              connecting it to setup. An unverified production app is allowed, keeps
              refresh tokens alive indefinitely, is capped at 100 users, and costs one
              extra click on a "Google hasn't verified this app" screen at login.
 
-          6. Credentials -> Create credentials -> OAuth client ID ->
-             Application type: Desktop app. Copy the client id and client secret.
+          6. Left nav -> Clients -> "Create OAuth client".
+             Application type: Desktop app. Create, then copy the client ID and
+             client secret.
 
           7. Paste them below. Then run:  gmail account add <name>
+
+        If a guide you are following mentions "APIs & Services -> OAuth consent screen",
+        it predates the current console: that page is now the Google Auth Platform, split
+        across Branding (app name), Audience (user type, publishing) and Data Access
+        (scopes). OAuth clients moved from Credentials to Clients.
 
         Workspace alternative: on a Google Workspace domain you can use a service account
         with domain-wide delegation instead -- no consent screen and no token expiry, but

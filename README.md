@@ -24,10 +24,16 @@ gmail setup          # prints a walkthrough, then stores your client id and secr
 gmail setup --show   # just the walkthrough
 ```
 
-> **The step everyone skips:** publish the OAuth consent screen to **In production**.
-> While it sits in *Testing*, Google revokes every refresh token after **7 days** — everything
-> works, then fails with `invalid_grant` a week later. Unverified production is fine for
-> personal use (100-user cap). `gmail setup` will not store credentials until you confirm this.
+> **The step everyone skips:** in the Google Auth Platform, go to **Audience → Publish app** so
+> publishing status is **In production**. While it sits at *Testing*, Google revokes every
+> refresh token after **7 days** — everything works, then fails with `invalid_grant` a week
+> later. Unverified production is fine for personal use (100-user cap). `gmail setup` will not
+> store credentials until you confirm this.
+
+Google reorganised the Cloud Console: the old *APIs & Services → OAuth consent screen* page is
+now the **Google Auth Platform**, with app name under **Branding**, user type and publishing
+under **Audience**, scopes under **Data Access**, and OAuth clients under **Clients**. The
+walkthrough `gmail setup` prints is written against the current layout.
 
 Then log in:
 
