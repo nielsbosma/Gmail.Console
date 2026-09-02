@@ -98,19 +98,31 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
 
           3. Open the Google Auth Platform:
              https://console.cloud.google.com/auth/overview
-             On a new project this walks you through app name, user support email,
-             audience and contact details. Choose audience "External" -- unless this
-             is a Workspace-only tool, in which case "Internal" also lets you skip
-             step 5.
+             If it offers a "Get started" flow, run through it. Choose audience
+             "External" -- unless this is a Workspace-only tool, in which case
+             "Internal" also lets you skip step 6.
 
-          4. Left nav -> Data Access -> "Add or remove scopes". Add these two, then
+          4. Left nav -> Branding. Fill in and Save:
+               App name
+               User support email
+               Developer contact information (your email, at the bottom)
+             Logo, app domain and authorized domains are all optional for a desktop
+             client.
+
+             Do not skip this. Until Branding is complete, the Audience page shows
+             "Your app's OAuth configuration is incomplete" and the "Publish app"
+             button in step 6 stays greyed out with no explanation of which field
+             is missing.
+
+          5. Left nav -> Data Access -> "Add or remove scopes". Add these two, then
              Update and Save:
                https://www.googleapis.com/auth/gmail.readonly     (search and read)
                https://www.googleapis.com/auth/gmail.compose      (drafts and replies)
              They will be listed as "restricted". That is expected.
 
-          5. *** Left nav -> Audience -> "Publish app". ***
+          6. *** Left nav -> Audience -> "Publish app". ***
              Publishing status goes from Testing to In production. Leave it unverified.
+             (Greyed out? Go back to step 4.)
 
              This is the step everyone skips. While publishing status is Testing,
              Google revokes every refresh token after 7 DAYS. Everything works, then
@@ -119,16 +131,17 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
              refresh tokens alive indefinitely, is capped at 100 users, and costs one
              extra click on a "Google hasn't verified this app" screen at login.
 
-          6. Left nav -> Clients -> "Create OAuth client".
+          7. Left nav -> Clients -> "Create OAuth client".
              Application type: Desktop app. Create, then copy the client ID and
              client secret.
 
-          7. Paste them below. Then run:  gmail account add <name>
+          8. Paste them below. Then run:  gmail account add <name>
 
         If a guide you are following mentions "APIs & Services -> OAuth consent screen",
         it predates the current console: that page is now the Google Auth Platform, split
-        across Branding (app name), Audience (user type, publishing) and Data Access
-        (scopes). OAuth clients moved from Credentials to Clients.
+        across Branding (app name, support email, contact), Audience (user type,
+        publishing status, test users) and Data Access (scopes). OAuth clients moved from
+        Credentials to Clients.
 
         Workspace alternative: on a Google Workspace domain you can use a service account
         with domain-wide delegation instead -- no consent screen and no token expiry, but

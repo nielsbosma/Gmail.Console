@@ -359,12 +359,18 @@ footer{border-top:1px solid var(--line);margin-top:20px;padding:22px 0 0;font-fa
   <dl class="ms">
     <dt>1</dt><dd>Create a project at <a href="https://console.cloud.google.com/projectcreate">console.cloud.google.com/projectcreate</a> — name it anything, e.g. <em>gmail-cli</em>.</dd>
     <dt>2</dt><dd>Enable the <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com">Gmail API</a> for it.</dd>
-    <dt>3</dt><dd>Open the <strong>Google Auth Platform</strong> at <code>console.cloud.google.com/auth/overview</code>. On a new project this walks you through app name, user support email, audience and contact details. Audience <strong>External</strong> — unless this is a Workspace-only tool, in which case <strong>Internal</strong> also lets you skip step 5.</dd>
-    <dt>4</dt><dd><strong>Data Access → Add or remove scopes.</strong> Add <code>gmail.readonly</code> and <code>gmail.compose</code>, then <em>Update</em> and <em>Save</em>. Both are <em>restricted</em> scopes, so Google will show a warning about verification.</dd>
-    <dt>5</dt><dd><strong>Audience → Publish app.</strong> Publishing status moves from <em>Testing</em> to <em>In production</em>. Leave it unverified.</dd>
-    <dt>6</dt><dd><strong>Clients → Create OAuth client → Application type: Desktop app.</strong> Copy the client ID and client secret.</dd>
-    <dt>7</dt><dd>Paste both when <code>gmail setup</code> asks. Then <code>gmail account add work</code>.</dd>
+    <dt>3</dt><dd>Open the <strong>Google Auth Platform</strong> at <code>console.cloud.google.com/auth/overview</code>, and run its <em>Get started</em> flow if offered. Audience <strong>External</strong> — unless this is a Workspace-only tool, in which case <strong>Internal</strong> also lets you skip step 6.</dd>
+    <dt>4</dt><dd><strong>Branding.</strong> Fill in app name, user support email and developer contact information, then <em>Save</em>. Logo, app domain and authorized domains are optional for a desktop client.</dd>
+    <dt>5</dt><dd><strong>Data Access → Add or remove scopes.</strong> Add <code>gmail.readonly</code> and <code>gmail.compose</code>, then <em>Update</em> and <em>Save</em>. Both are <em>restricted</em> scopes, so Google will show a warning about verification.</dd>
+    <dt>6</dt><dd><strong>Audience → Publish app.</strong> Publishing status moves from <em>Testing</em> to <em>In production</em>. Leave it unverified.</dd>
+    <dt>7</dt><dd><strong>Clients → Create OAuth client → Application type: Desktop app.</strong> Copy the client ID and client secret.</dd>
+    <dt>8</dt><dd>Paste both when <code>gmail setup</code> asks. Then <code>gmail account add work</code>.</dd>
   </dl>
+
+  <div class="trap">
+    <span class="tl">Step 4 gates step 5</span>
+    <p>Until Branding is complete, the Audience page shows <em>"Your app's OAuth configuration is incomplete"</em> and the <strong>Publish app</strong> button is greyed out — without naming the missing field. Someone following a step ordered <em>publish, then brand</em> hits a dead end on the page that matters most, so the guide does Branding first and says so explicitly.</p>
+  </div>
 
   <div class="note">
     <p><strong>The console moved.</strong> Any guide that says <em>APIs &amp; Services → OAuth consent screen</em> predates the current Cloud Console. That page is now the <strong>Google Auth Platform</strong>, split across <strong>Branding</strong> (app name and logo), <strong>Audience</strong> (user type, test users, publishing status) and <strong>Data Access</strong> (scopes); OAuth clients moved from <em>Credentials</em> to <strong>Clients</strong>. The walkthrough above is written against the new layout, and <code>gmail setup</code> prints it verbatim.</p>

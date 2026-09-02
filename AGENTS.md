@@ -17,11 +17,24 @@ dotnet test  tests/Gmail.Console.Tests/Gmail.Console.Tests.csproj -c Release
 # run without installing
 dotnet src/bin/Release/net10.0/gmail.dll <args>
 
-# install from source
-dotnet pack src/Gmail.Console.csproj -c Release -p:Version=0.1.0 --output ./nupkgs
-dotnet tool install --global --add-source ./nupkgs Gmail.Console --version 0.1.0
+# install from source, or reinstall after a change
 dotnet tool uninstall --global Gmail.Console
+dotnet pack src/Gmail.Console.csproj -c Release -p:Version=0.1.2 --output ./nupkgs
+dotnet tool install --global --add-source ./nupkgs Gmail.Console --version 0.1.2
 ```
+
+Two things about that cycle, both of which have already caught someone out:
+
+- **`dotnet build` does not update the installed `gmail`.** The global tool runs from an
+  installed package, not from `src/bin`. Editing source and rebuilding changes nothing about
+  the command on PATH — you must repack and reinstall, and then verify against the installed
+  command (`gmail setup --show`), not the build output.
+- **Bump the version every time.** Reinstalling the same version number can be served from the
+  NuGet cache, silently giving you the old package back.
+
+If `dotnet tool uninstall` fails with *"Access to the path ... is denied"*, a `gmail` process
+is still running — commonly `gmail setup` or `gmail account add` sitting at a prompt. Close it
+and retry.
 
 Use a throwaway config directory when testing so you never touch real credentials:
 

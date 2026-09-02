@@ -29,6 +29,9 @@ gmail setup --show   # just the walkthrough
 > refresh token after **7 days** — everything works, then fails with `invalid_grant` a week
 > later. Unverified production is fine for personal use (100-user cap). `gmail setup` will not
 > store credentials until you confirm this.
+>
+> If **Publish app** is greyed out, fill in **Branding** first (app name, user support email,
+> developer contact) — the Audience page will not tell you which field is missing.
 
 Google reorganised the Cloud Console: the old *APIs & Services → OAuth consent screen* page is
 now the **Google Auth Platform**, with app name under **Branding**, user type and publishing
