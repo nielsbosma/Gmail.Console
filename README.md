@@ -30,8 +30,15 @@ gmail setup --show   # just the walkthrough
 > later. Unverified production is fine for personal use (100-user cap). `gmail setup` will not
 > store credentials until you confirm this.
 >
-> If **Publish app** is greyed out, fill in **Branding** first (app name, user support email,
-> developer contact) — the Audience page will not tell you which field is missing.
+> If **Publish app** is greyed out, hover it — the tooltip is the only place Google says what is
+> missing. Publishing to External production needs an **Application home page** and an
+> **Application privacy policy link** on Branding, plus an **Authorized domain** covering both,
+> on top of the three starred fields. Leave the logo empty; that one forces brand verification.
+>
+> Not worth it for a personal tool? Either **Make internal** (Workspace projects only — skips
+> publishing, tokens never expire, but only that organisation's accounts can authorize), or stay
+> in Testing with yourself under **Test users** and re-run `gmail account reauth` weekly. Pass
+> `--client-id` / `--client-secret` to `gmail setup` to skip the publish confirmation.
 
 Google reorganised the Cloud Console: the old *APIs & Services → OAuth consent screen* page is
 now the **Google Auth Platform**, with app name under **Branding**, user type and publishing

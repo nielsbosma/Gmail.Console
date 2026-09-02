@@ -48,14 +48,18 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
             // The publishing state is invisible from the API — nothing in a token response says
             // which one issued it — so it has to be a checkpoint rather than a paragraph.
             var published = console.Confirm(
-                "[yellow]Is the OAuth consent screen published to [bold]In production[/]?[/]", false);
+                "[yellow]Is this app published to [bold]In production[/], or an [bold]Internal[/] Workspace app?[/]",
+                false);
 
             if (!published)
                 throw GmailException.Invalid(
-                    "Setup stopped: the OAuth consent screen is still in Testing mode.",
+                    "Setup stopped: publishing status is still Testing.",
                     "Refresh tokens issued while publishing status is Testing are revoked by Google after 7 days. " +
-                    "Publish the app first (Google Auth Platform -> Audience -> Publish app), " +
-                    "then run: gmail setup");
+                    "Publish the app (Google Auth Platform -> Audience -> Publish app), or make it Internal if the " +
+                    "project belongs to a Workspace organisation, then run: gmail setup. " +
+                    "To proceed on Testing anyway -- add yourself under Audience -> Test users first, and expect to " +
+                    "re-authorize weekly -- pass the credentials as arguments instead: " +
+                    "gmail setup --client-id <id> --client-secret <secret>");
         }
 
         var clientId = settings.ClientId ?? console.Prompt(
@@ -102,21 +106,28 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
              "External" -- unless this is a Workspace-only tool, in which case
              "Internal" also lets you skip step 6.
 
-          4. Left nav -> Branding. These three are the required ones (marked *):
+          4. Left nav -> Branding. Marked with * and required to save:
                App name
                User support email
                Developer contact information -> Email addresses (at the bottom)
+
+             Publishing to External production in step 6 additionally requires:
+               Application home page
+               Application privacy policy link
+               Authorized domains -> the domain both URLs live on
+
+             Google does not inspect what is at those URLs, but without them the
+             "Publish app" button stays greyed out. Its tooltip is the only place
+             that says so:
+
+               "Valid app name, support email, homepage url, and privacy policy
+                url are required for switching the app to external production
+                mode."
+
+             Leave the app logo empty. Uploading one forces brand verification --
+             a review measured in weeks -- and nothing here needs it.
+
              Save.
-
-             Leave the app logo, app domain links and authorized domains empty.
-             They are optional, and filling them in is what pushes the project into
-             needing brand verification -- a review measured in weeks, for a consent
-             screen only you will ever see.
-
-             Do not skip this. Until Branding is complete, the Audience page shows
-             "Your app's OAuth configuration is incomplete" and the "Publish app"
-             button in step 6 stays greyed out with no explanation of which field
-             is missing.
 
           5. Left nav -> Data Access -> "Add or remove scopes". Add these two, then
              Update and Save:
@@ -126,7 +137,7 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
 
           6. *** Left nav -> Audience -> "Publish app". ***
              Publishing status goes from Testing to In production. Leave it unverified.
-             (Greyed out? Go back to step 4.)
+             (Greyed out? Hover it -- the tooltip names the missing field. Step 4.)
 
              This is the step everyone skips. While publishing status is Testing,
              Google revokes every refresh token after 7 DAYS. Everything works, then
@@ -134,6 +145,21 @@ public sealed class SetupCommand : GmailCommand<SetupCommand.Settings>
              connecting it to setup. An unverified production app is allowed, keeps
              refresh tokens alive indefinitely, is capped at 100 users, and costs one
              extra click on a "Google hasn't verified this app" screen at login.
+
+             Two alternatives, if standing up a home page and a privacy policy for a
+             personal CLI is not worth it:
+
+               Audience -> "Make internal", when the project belongs to a Google
+               Workspace organisation. Internal apps skip publishing entirely and
+               their refresh tokens do not expire -- but only accounts in that
+               organisation can authorize, so this is no use for consumer @gmail.com
+               addresses or a domain in a different org.
+
+               Or stay in Testing and add yourself under Audience -> Test users.
+               Everything works; you will just be running "gmail account reauth"
+               every 7 days until you publish. Use the scripted form of this command
+               to skip the publish confirmation:
+                 gmail setup --client-id <id> --client-secret <secret>
 
           7. Left nav -> Clients -> "Create OAuth client".
              Application type: Desktop app. Create, then copy the client ID and

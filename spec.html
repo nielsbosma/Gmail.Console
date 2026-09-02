@@ -360,7 +360,7 @@ footer{border-top:1px solid var(--line);margin-top:20px;padding:22px 0 0;font-fa
     <dt>1</dt><dd>Create a project at <a href="https://console.cloud.google.com/projectcreate">console.cloud.google.com/projectcreate</a> — name it anything, e.g. <em>gmail-cli</em>.</dd>
     <dt>2</dt><dd>Enable the <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com">Gmail API</a> for it.</dd>
     <dt>3</dt><dd>Open the <strong>Google Auth Platform</strong> at <code>console.cloud.google.com/auth/overview</code>, and run its <em>Get started</em> flow if offered. Audience <strong>External</strong> — unless this is a Workspace-only tool, in which case <strong>Internal</strong> also lets you skip step 6.</dd>
-    <dt>4</dt><dd><strong>Branding.</strong> Three required fields: app name, user support email, and developer contact email. <em>Save</em>. Leave the logo, app domain links and authorized domains empty — filling them in is what triggers brand verification, a weeks-long review for a consent screen only you will see.</dd>
+    <dt>4</dt><dd><strong>Branding.</strong> Required to save: app name, user support email, developer contact email. Required <em>additionally</em> to publish in step 6: application home page, application privacy policy link, and an <strong>Authorized domain</strong> covering both. Leave the logo empty — that one does trigger brand verification.</dd>
     <dt>5</dt><dd><strong>Data Access → Add or remove scopes.</strong> Add <code>gmail.readonly</code> and <code>gmail.compose</code>, then <em>Update</em> and <em>Save</em>. Both are <em>restricted</em> scopes, so Google will show a warning about verification.</dd>
     <dt>6</dt><dd><strong>Audience → Publish app.</strong> Publishing status moves from <em>Testing</em> to <em>In production</em>. Leave it unverified.</dd>
     <dt>7</dt><dd><strong>Clients → Create OAuth client → Application type: Desktop app.</strong> Copy the client ID and client secret.</dd>
@@ -368,8 +368,9 @@ footer{border-top:1px solid var(--line);margin-top:20px;padding:22px 0 0;font-fa
   </dl>
 
   <div class="trap">
-    <span class="tl">Step 4 gates step 5</span>
-    <p>Until Branding is complete, the Audience page shows <em>"Your app's OAuth configuration is incomplete"</em> and the <strong>Publish app</strong> button is greyed out — without naming the missing field. Someone following a step ordered <em>publish, then brand</em> hits a dead end on the page that matters most, so the guide does Branding first and says so explicitly.</p>
+    <span class="tl">Publishing needs two fields the form calls optional</span>
+    <p>The Audience banner says only <em>"Your app's OAuth configuration is incomplete"</em>, and the greyed-out <strong>Publish app</strong> button names the real requirement nowhere except its hover tooltip: <em>"Valid app name, support email, homepage url, and privacy policy url are required for switching the app to external production mode."</em> Home page and privacy policy sit under <em>App domain</em>, unmarked, among fields that genuinely are optional.</p>
+    <p>So publishing costs you two hosted URLs and an authorized domain. Two ways out for a personal tool: <strong>Make internal</strong>, if the project is in a Workspace org — internal apps skip publishing and their tokens never expire, but only that org's accounts can authorize; or stay in Testing with yourself as a test user and accept re-authorizing every 7 days.</p>
   </div>
 
   <div class="note">
