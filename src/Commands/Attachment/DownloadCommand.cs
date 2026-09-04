@@ -37,7 +37,7 @@ public sealed class DownloadCommand : MailboxCommand<DownloadCommand.Settings>
 
         [CommandOption("--max-size <BYTES>")]
         [Description("Skip attachments larger than this")]
-        [DefaultValue(26214400)]
+        [DefaultValue(26214400L)]
         public long MaxSize { get; set; } = 26214400;
 
         [CommandOption("--include-inline")]
