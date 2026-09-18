@@ -245,6 +245,12 @@ thread that fails is recorded in `errors` rather than ending the run. `--concurr
 across threads only — a thread's own messages stay sequential, because they are the expensive
 part and parallelising them buys nothing but a shot at the limiter.
 
+**More concurrency is slower, and not by a little.** Measured over 30 threads on a real
+mailbox: `--concurrency 2` finished in 19s with 3 retries, `--concurrency 6` in 119s with 27.
+The limiter charges far more for a burst than the extra requests return, so the default is 2
+and raising it is almost always a mistake. If a bulk run feels slow, lower it rather than
+raise it.
+
 **`TrimQuotedReply` matches an attribution across lines, not just within one.** Apple Mail and
 Outlook on the web put "On &lt;date&gt;, &lt;person&gt; wrote:" in a table, so converting to text leaves
 one sentence over three or four indented fragments. A single-line regex silently keeps every

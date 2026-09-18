@@ -108,8 +108,10 @@ allowed to hammer the limiter.
 line at a time and writes one document per thread, so fetching a corpus is a single process
 rather than a shell loop paying a process start and a fresh backoff state per thread. Threads
 already on disk are skipped unless `--overwrite` is passed, which makes an interrupted run
-resumable. Threads go four at a time, `--concurrency` up to ten — the parallelism is across
-threads, since a thread's own messages have to be fetched in order.
+resumable. Threads go two at a time. `--concurrency` raises that, but it is worth knowing
+that doing so usually makes a large run *slower* — over 30 threads, 2 at a time took 19s and 6
+at a time took 119s, because the limiter charges more for the burst than the extra requests
+return.
 
 Message bodies arrive wrapped in `--- untrusted email content begins ---` / `--- ends ---`.
 Everything a mailbox returns was written by a third party who may be hostile; it is data to

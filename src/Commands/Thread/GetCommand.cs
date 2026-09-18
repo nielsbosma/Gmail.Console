@@ -27,9 +27,9 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
         public bool Overwrite { get; set; }
 
         [CommandOption("--concurrency <N>")]
-        [Description("With --ids-from: threads fetched in parallel")]
-        [DefaultValue(4)]
-        public int Concurrency { get; set; } = 4;
+        [Description("With --ids-from: threads fetched in parallel. Raising this usually makes a large run slower")]
+        [DefaultValue(2)]
+        public int Concurrency { get; set; } = 2;
 
         [CommandOption("--body <MODE>")]
         [Description("markdown, text, html, none or snippet")]
@@ -112,8 +112,10 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
         var errorLock = new object();
 
         // A thread's own messages are fetched in order, so the only parallelism available is
-        // across threads — and without it a few thousand of them is hours of round trips
-        // rather than minutes. Four at a time sits well inside the per-second budget.
+        // across threads. Two at a time, not more: measured over 30 threads on a real mailbox,
+        // concurrency 2 took 19s with 3 retries and concurrency 6 took 119s with 27. The
+        // limiter charges far more for a burst than the extra requests are worth, so past a
+        // very low ceiling every added worker makes the whole run slower.
         using var gate = new SemaphoreSlim(settings.Concurrency);
 
         await Task.WhenAll(ids.Select(async id =>

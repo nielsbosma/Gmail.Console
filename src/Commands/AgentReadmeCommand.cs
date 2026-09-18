@@ -136,8 +136,11 @@ public sealed class AgentReadmeCommand : GmailCommand<AgentReadmeCommand.Setting
         It writes one document per thread, named `<threadId>.yaml`, and prints a manifest
         (`requested`, `written`, `skipped`, `failed`) rather than the mail itself. Threads whose
         file already exists are skipped, so re-running after an interruption resumes — pass
-        `--overwrite` to refresh them. Threads are fetched four at a time; `--concurrency`
-        raises that to at most ten.
+        `--overwrite` to refresh them.
+
+        Threads are fetched two at a time. Do not raise `--concurrency` to speed a run up — it
+        reliably does the opposite, because Gmail's limiter charges more for the burst than the
+        extra requests return. If a run is slow, lower it.
 
         ## Writing drafts
 
