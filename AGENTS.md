@@ -241,7 +241,9 @@ that was never going to admit them, reported as a hard failure. Rate limiting ar
 The bulk path exists because a shell loop over a few thousand threads pays a process start each
 time and resets the backoff state between them, so it cannot pace itself against the limiter.
 It skips threads already on disk, which is what makes an interrupted run resumable; a single
-thread that fails is recorded in `errors` rather than ending the run.
+thread that fails is recorded in `errors` rather than ending the run. `--concurrency` applies
+across threads only — a thread's own messages stay sequential, because they are the expensive
+part and parallelising them buys nothing but a shot at the limiter.
 
 **`TrimQuotedReply` matches an attribution across lines, not just within one.** Apple Mail and
 Outlook on the web put "On &lt;date&gt;, &lt;person&gt; wrote:" in a table, so converting to text leaves

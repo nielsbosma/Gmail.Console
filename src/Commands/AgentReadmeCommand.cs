@@ -93,7 +93,7 @@ public sealed class AgentReadmeCommand : GmailCommand<AgentReadmeCommand.Setting
             gmail search "<gmail query>" -a <account> --ids-only --all [--max N]
             gmail message get <message-id> -a <account> [--body markdown|text|html|none|snippet]
             gmail thread get <thread-id> -a <account> [--max-messages N]
-            gmail thread get -a <account> --ids-from ./ids.txt --out-dir ./threads
+            gmail thread get -a <account> --ids-from ./ids.txt --out-dir ./threads [--concurrency N]
             gmail message attachments <message-id> -a <account>
             gmail attachment download <message-id> -a <account> --all --out-dir ./files
             gmail label list -a <account>
@@ -136,7 +136,8 @@ public sealed class AgentReadmeCommand : GmailCommand<AgentReadmeCommand.Setting
         It writes one document per thread, named `<threadId>.yaml`, and prints a manifest
         (`requested`, `written`, `skipped`, `failed`) rather than the mail itself. Threads whose
         file already exists are skipped, so re-running after an interruption resumes — pass
-        `--overwrite` to refresh them.
+        `--overwrite` to refresh them. Threads are fetched four at a time; `--concurrency`
+        raises that to at most ten.
 
         ## Writing drafts
 

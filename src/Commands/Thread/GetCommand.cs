@@ -26,6 +26,11 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
         [Description("With --out-dir: refetch threads whose file already exists")]
         public bool Overwrite { get; set; }
 
+        [CommandOption("--concurrency <N>")]
+        [Description("With --ids-from: threads fetched in parallel")]
+        [DefaultValue(4)]
+        public int Concurrency { get; set; } = 4;
+
         [CommandOption("--body <MODE>")]
         [Description("markdown, text, html, none or snippet")]
         [DefaultValue("markdown")]
@@ -63,6 +68,8 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
                 return ValidationResult.Error("--ids-from requires --out-dir.");
             if (bulk && !File.Exists(IdsFrom))
                 return ValidationResult.Error($"--ids-from: no such file '{IdsFrom}'.");
+            if (Concurrency is < 1 or > 10)
+                return ValidationResult.Error("--concurrency must be between 1 and 10.");
 
             return base.Validate();
         }
@@ -102,34 +109,50 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
 
         int written = 0, skipped = 0;
         var errors = new List<object>();
+        var errorLock = new object();
 
-        foreach (var id in ids)
+        // A thread's own messages are fetched in order, so the only parallelism available is
+        // across threads — and without it a few thousand of them is hours of round trips
+        // rather than minutes. Four at a time sits well inside the per-second budget.
+        using var gate = new SemaphoreSlim(settings.Concurrency);
+
+        await Task.WhenAll(ids.Select(async id =>
         {
-            ct.ThrowIfCancellationRequested();
-
-            var path = Path.Combine(outDir, $"{Sanitize(id)}.{extension}");
-            if (!settings.Overwrite && File.Exists(path)) { skipped++; continue; }
-
+            await gate.WaitAsync(ct);
             try
             {
+                var path = Path.Combine(outDir, $"{Sanitize(id)}.{extension}");
+                if (!settings.Overwrite && File.Exists(path))
+                {
+                    Interlocked.Increment(ref skipped);
+                    return;
+                }
+
                 var thread = await FetchOneAsync(client, settings, id, ct);
                 await File.WriteAllTextAsync(path, OutputHelper.Serialize(thread!, settings.Format), ct);
-                written++;
+
+                var done = Interlocked.Increment(ref written);
+                if (done % 100 == 0)
+                    OutputHelper.Status($"  {done} written, {Volatile.Read(ref skipped)} already present, {errors.Count} failed");
             }
             catch (GmailException ex)
             {
                 // One unreadable thread should not end a run of several thousand.
-                errors.Add(new Dictionary<string, object?>
+                lock (errorLock)
                 {
-                    ["threadId"] = id,
-                    ["code"] = ex.Code.ToString(),
-                    ["detail"] = ex.Message
-                });
+                    errors.Add(new Dictionary<string, object?>
+                    {
+                        ["threadId"] = id,
+                        ["code"] = ex.Code.ToString(),
+                        ["detail"] = ex.Message
+                    });
+                }
             }
-
-            if (written % 25 == 0 && written > 0)
-                OutputHelper.Status($"  {written} written, {skipped} already present, {errors.Count} failed");
-        }
+            finally
+            {
+                gate.Release();
+            }
+        }));
 
         var result = new Dictionary<string, object?>
         {
