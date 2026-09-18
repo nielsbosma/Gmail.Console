@@ -251,6 +251,13 @@ The limiter charges far more for a burst than the extra requests return, so the 
 and raising it is almost always a mistake. If a bulk run feels slow, lower it rather than
 raise it.
 
+**A `text/plain` part is not always plain text.** Helpdesks that forward a ticket - Freshdesk
+here - put marked-up HTML in it, and `ToMarkdown` prefers the plain part, so it was returned
+verbatim and `StripTags` never saw it. `LooksLikeHtml` sends such a part through the HTML
+conversion instead, which keeps the links and line breaks that stripping would discard. It
+matches block tags only, so "use a `<canvas>` element" in a genuinely plain message is left
+alone.
+
 **`--body markdown` must not return HTML.** ReverseMarkdown leaves a table nested inside a
 table cell as literal markup, and `Unknown = Bypass` passes through anything else it does not
 recognise, so a mail protection service's challenge page came back as twenty kilobytes of raw

@@ -104,15 +104,29 @@ public static partial class MessageRenderer
         var text = mime.TextBody;
         var html = mime.HtmlBody;
 
+        // A text/plain part is not always plain text. Helpdesks that forward a ticket - Freshdesk
+        // is the one that turned up here - put marked-up HTML in it, and returning that verbatim
+        // hands back a wall of divs under a field that promised markdown. Converting it recovers
+        // the links and line breaks that stripping the tags would throw away.
+        var plain = !string.IsNullOrWhiteSpace(text)
+            ? (LooksLikeHtml(text!) ? HtmlToMarkdown(text!) : text)
+            : null;
+
         return mode switch
         {
             BodyMode.Html => html ?? text ?? "",
-            BodyMode.Text => !string.IsNullOrWhiteSpace(text) ? text : HtmlToMarkdown(html ?? ""),
+            BodyMode.Text => plain ?? HtmlToMarkdown(html ?? ""),
             // Markdown: the plain part is already close to markdown and free of layout tables,
             // so prefer it; convert the HTML part only when there isn't one.
-            _ => !string.IsNullOrWhiteSpace(text) ? text : HtmlToMarkdown(html ?? "")
+            _ => plain ?? HtmlToMarkdown(html ?? "")
         };
     }
+
+    /// <summary>
+    /// Block-level tags only. Someone writing "use a &lt;canvas&gt; element" in a genuinely plain
+    /// message must not trip this, so an inline tag or a bare angle bracket is not enough.
+    /// </summary>
+    public static bool LooksLikeHtml(string text) => HtmlBlockTag().IsMatch(text);
 
     public static string HtmlToMarkdown(string html)
     {
@@ -393,6 +407,9 @@ public static partial class MessageRenderer
 
     [GeneratedRegex(@"[ \t]{2,}")]
     private static partial Regex SpaceRun();
+
+    [GeneratedRegex(@"<(?:div|table|tbody|tr|td|p|br|blockquote|body|html)\b[^<>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex HtmlBlockTag();
 
     [GeneratedRegex(@"<!--.*?-->|<!\[[^\]]*\]>|<!\[endif\]-->", RegexOptions.Singleline)]
     private static partial Regex HtmlComment();

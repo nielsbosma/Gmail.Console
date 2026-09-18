@@ -69,6 +69,23 @@ public class MessageRendererTests
     }
 
     [Fact]
+    public void LooksLikeHtml_spots_a_text_part_that_is_really_html()
+    {
+        // Freshdesk forwards a ticket with marked-up HTML in the text/plain part.
+        Assert.True(MessageRenderer.LooksLikeHtml(
+            "<div dir=\"auto\">Ok, but I purchased a plan again.<br><br></div>"));
+    }
+
+    [Fact]
+    public void LooksLikeHtml_ignores_a_plain_message_that_mentions_a_tag()
+    {
+        // Converting this would mangle someone's actual words.
+        Assert.False(MessageRenderer.LooksLikeHtml(
+            "Your export uses a <canvas> element and my reader cannot open it."));
+        Assert.False(MessageRenderer.LooksLikeHtml("Reply to me at <paul@example.com> please."));
+    }
+
+    [Fact]
     public void StripTags_removes_markup_reverse_markdown_left_behind()
     {
         // A table nested in a table cell is passed through verbatim, so a mail protection
