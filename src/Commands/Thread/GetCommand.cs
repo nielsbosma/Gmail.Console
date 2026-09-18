@@ -11,8 +11,20 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
 {
     public sealed class Settings : AccountSettings
     {
-        [CommandArgument(0, "<THREAD-ID>")]
+        [CommandArgument(0, "[THREAD-ID]")]
         public string ThreadId { get; set; } = "";
+
+        [CommandOption("--ids-from <FILE>")]
+        [Description("Fetch every thread id listed in this file, one per line, instead of a single id")]
+        public string? IdsFrom { get; set; }
+
+        [CommandOption("--out-dir <DIR>")]
+        [Description("With --ids-from: write one document per thread here, named <threadId>.<format>")]
+        public string? OutDir { get; set; }
+
+        [CommandOption("--overwrite")]
+        [Description("With --out-dir: refetch threads whose file already exists")]
+        public bool Overwrite { get; set; }
 
         [CommandOption("--body <MODE>")]
         [Description("markdown, text, html, none or snippet")]
@@ -38,6 +50,20 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
                 return ValidationResult.Error($"--body must be one of: {string.Join(", ", BodyModes.Names)}");
             if (MaxMessages < 1)
                 return ValidationResult.Error("--max-messages must be at least 1.");
+
+            var single = !string.IsNullOrWhiteSpace(ThreadId);
+            var bulk = !string.IsNullOrWhiteSpace(IdsFrom);
+
+            if (single == bulk)
+                return ValidationResult.Error("Pass either a thread id or --ids-from <FILE>, not both.");
+
+            // A bulk fetch of a few thousand threads would otherwise render every body onto
+            // stdout as one document, which is unusable for the corpus work it exists for.
+            if (bulk && string.IsNullOrWhiteSpace(OutDir))
+                return ValidationResult.Error("--ids-from requires --out-dir.");
+            if (bulk && !File.Exists(IdsFrom))
+                return ValidationResult.Error($"--ids-from: no such file '{IdsFrom}'.");
+
             return base.Validate();
         }
     }
@@ -51,15 +77,90 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
     /// <summary>The per-message fetch, identical to the one <c>message get</c> makes.</summary>
     public static string MessagePath(string messageId) => $"messages/{messageId}?format=raw";
 
-    protected override async Task<object?> RunAsync(GmailApiClient client, Settings settings, CancellationToken ct)
+    protected override Task<object?> RunAsync(GmailApiClient client, Settings settings, CancellationToken ct) =>
+        string.IsNullOrWhiteSpace(settings.IdsFrom)
+            ? FetchOneAsync(client, settings, settings.ThreadId, ct)
+            : FetchManyAsync(client, settings, ct);
+
+    /// <summary>
+    /// One process, one token refresh and one backoff state for the whole corpus — a shell loop
+    /// spawning the tool per thread pays a process start for each and cannot pace itself against
+    /// the rate limiter. Resumable by default: a thread whose file is already on disk is skipped,
+    /// so an interrupted run continues rather than starting over.
+    /// </summary>
+    private static async Task<object?> FetchManyAsync(GmailApiClient client, Settings settings, CancellationToken ct)
+    {
+        var outDir = settings.OutDir!;
+        Directory.CreateDirectory(outDir);
+
+        var extension = settings.Format.Equals("json", StringComparison.OrdinalIgnoreCase) ? "json" : "yaml";
+        var ids = File.ReadLines(settings.IdsFrom!)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && !line.StartsWith('#'))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        int written = 0, skipped = 0;
+        var errors = new List<object>();
+
+        foreach (var id in ids)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var path = Path.Combine(outDir, $"{Sanitize(id)}.{extension}");
+            if (!settings.Overwrite && File.Exists(path)) { skipped++; continue; }
+
+            try
+            {
+                var thread = await FetchOneAsync(client, settings, id, ct);
+                await File.WriteAllTextAsync(path, OutputHelper.Serialize(thread!, settings.Format), ct);
+                written++;
+            }
+            catch (GmailException ex)
+            {
+                // One unreadable thread should not end a run of several thousand.
+                errors.Add(new Dictionary<string, object?>
+                {
+                    ["threadId"] = id,
+                    ["code"] = ex.Code.ToString(),
+                    ["detail"] = ex.Message
+                });
+            }
+
+            if (written % 25 == 0 && written > 0)
+                OutputHelper.Status($"  {written} written, {skipped} already present, {errors.Count} failed");
+        }
+
+        var result = new Dictionary<string, object?>
+        {
+            ["account"] = client.Account.Name,
+            ["outDir"] = Path.GetFullPath(outDir),
+            ["requested"] = ids.Count,
+            ["written"] = written,
+            ["skipped"] = skipped,
+            ["failed"] = errors.Count
+        };
+        if (errors.Count > 0) result["errors"] = errors;
+        if (skipped > 0 && !settings.Overwrite)
+            result["note"] = $"{skipped} threads already had a file and were not refetched. "
+                           + "Pass --overwrite to refresh them.";
+        return result;
+    }
+
+    /// <summary>Thread ids are hex, but the file name is ours to guarantee.</summary>
+    private static string Sanitize(string id) =>
+        string.Concat(id.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
+
+    private static async Task<object?> FetchOneAsync(
+        GmailApiClient client, Settings settings, string threadId, CancellationToken ct)
     {
         var mode = BodyModes.Parse(settings.Body);
 
-        using var doc = await client.GetAsync(ThreadPath(settings.ThreadId), ct);
+        using var doc = await client.GetAsync(ThreadPath(threadId), ct);
         var root = doc.RootElement;
 
         if (!root.TryGetProperty("messages", out var messages) || messages.ValueKind != JsonValueKind.Array)
-            throw GmailException.NotFound($"Thread '{settings.ThreadId}' has no messages.");
+            throw GmailException.NotFound($"Thread '{threadId}' has no messages.");
 
         var all = messages.EnumerateArray()
             .Select(m => m.TryGetProperty("id", out var id) ? id.GetString() : null)
@@ -91,7 +192,7 @@ public sealed class GetCommand : MailboxCommand<GetCommand.Settings>
         var result = new Dictionary<string, object?>
         {
             ["account"] = client.Account.Name,
-            ["threadId"] = settings.ThreadId,
+            ["threadId"] = threadId,
             ["messageCount"] = total,
             ["returned"] = rendered.Count,
             ["messages"] = rendered

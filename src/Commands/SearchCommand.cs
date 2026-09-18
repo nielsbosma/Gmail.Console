@@ -56,6 +56,19 @@ public sealed class SearchCommand : MailboxCommand<SearchCommand.Settings>
         [Description("Collapse to one entry per thread")]
         public bool GroupThreads { get; set; }
 
+        [CommandOption("--ids-only")]
+        [Description("Return ids and thread ids straight from the listing, without fetching each message")]
+        public bool IdsOnly { get; set; }
+
+        [CommandOption("--all")]
+        [Description("Follow nextPageToken until the query is exhausted or --max is reached")]
+        public bool All { get; set; }
+
+        [CommandOption("--max <N>")]
+        [Description("With --all, stop after this many messages")]
+        [DefaultValue(1000)]
+        public int Max { get; set; } = 1000;
+
         [CommandOption("--concurrency <N>")]
         [Description("Parallel message fetches")]
         [DefaultValue(5)]
@@ -67,6 +80,16 @@ public sealed class SearchCommand : MailboxCommand<SearchCommand.Settings>
                 return ValidationResult.Error("--limit must be between 1 and 500.");
             if (Concurrency is < 1 or > 20)
                 return ValidationResult.Error("--concurrency must be between 1 and 20.");
+            if (Max < 1)
+                return ValidationResult.Error("--max must be at least 1.");
+
+            // Without --ids-only every page costs a fetch per message, so an unattended
+            // --all over a large mailbox is a guaranteed trip through the rate limiter.
+            if (All && !IdsOnly && Max > 500)
+                return ValidationResult.Error(
+                    "--all without --ids-only fetches every message individually. "
+                    + "Add --ids-only, or set --max to 500 or less.");
+
             return base.Validate();
         }
     }
@@ -74,46 +97,85 @@ public sealed class SearchCommand : MailboxCommand<SearchCommand.Settings>
     protected override async Task<object?> RunAsync(GmailApiClient client, Settings settings, CancellationToken ct)
     {
         var query = BuildQuery(settings);
-
-        var url = new StringBuilder("messages?maxResults=" + settings.Limit);
-        if (query.Length > 0) url.Append("&q=").Append(Uri.EscapeDataString(query));
-        if (!string.IsNullOrEmpty(settings.PageToken)) url.Append("&pageToken=").Append(Uri.EscapeDataString(settings.PageToken));
-        if (settings.IncludeSpamTrash) url.Append("&includeSpamTrash=true");
-        foreach (var label in settings.Labels) url.Append("&labelIds=").Append(Uri.EscapeDataString(label));
-
-        using var listing = await client.GetAsync(url.ToString(), ct);
-        var root = listing.RootElement;
+        var limit = settings.All ? Math.Min(settings.Limit, settings.Max) : settings.Limit;
 
         var ids = new List<(string Id, string ThreadId)>();
-        if (root.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array)
+        var seenThreads = new HashSet<string>(StringComparer.Ordinal);
+        var token = settings.PageToken;
+        string? nextToken = null;
+        long? estimate = null;
+        var pages = 0;
+
+        do
         {
-            foreach (var message in messages.EnumerateArray())
+            using var listing = await client.GetAsync(ListPath(query, limit, token, settings), ct);
+            var root = listing.RootElement;
+            pages++;
+
+            if (root.TryGetProperty("messages", out var messages) && messages.ValueKind == JsonValueKind.Array)
             {
-                var id = message.GetProperty("id").GetString()!;
-                var threadId = message.TryGetProperty("threadId", out var t) ? t.GetString() ?? id : id;
+                foreach (var message in messages.EnumerateArray())
+                {
+                    var id = message.GetProperty("id").GetString()!;
+                    var threadId = message.TryGetProperty("threadId", out var t) ? t.GetString() ?? id : id;
 
-                if (settings.GroupThreads && ids.Any(x => x.ThreadId == threadId)) continue;
-                ids.Add((id, threadId));
+                    if (settings.GroupThreads && !seenThreads.Add(threadId)) continue;
+                    ids.Add((id, threadId));
+                    if (settings.All && ids.Count >= settings.Max) break;
+                }
             }
-        }
 
-        var hydrated = await HydrateAsync(client, ids.Select(x => x.Id).ToList(), settings.Concurrency, ct);
+            if (estimate is null &&
+                root.TryGetProperty("resultSizeEstimate", out var size) && size.TryGetInt64(out var value))
+                estimate = value;
+
+            nextToken = root.TryGetProperty("nextPageToken", out var next) ? next.GetString() : null;
+            token = nextToken;
+        }
+        while (settings.All && !string.IsNullOrEmpty(token) && ids.Count < settings.Max && !ct.IsCancellationRequested);
+
+        // --ids-only stops here, at one API call per page. That is the difference between
+        // enumerating a mailbox and exhausting the per-minute quota doing it: hydration below
+        // costs a messages.get for every single result.
+        var rows = settings.IdsOnly
+            ? ids.Select(x => (object)new Dictionary<string, object?> { ["id"] = x.Id, ["threadId"] = x.ThreadId }).ToList()
+            : await HydrateAsync(client, ids, settings.Concurrency, ct);
+
+        var failed = rows.Count(r => r is Dictionary<string, object?> d && d.ContainsKey("error"));
 
         var result = new Dictionary<string, object?>
         {
             ["query"] = query,
             ["account"] = client.Account.Name,
-            ["count"] = hydrated.Count,
-            ["messages"] = hydrated
+            ["count"] = rows.Count,
+            ["messages"] = rows
         };
 
-        if (root.TryGetProperty("nextPageToken", out var next) && next.GetString() is { Length: > 0 } token)
-            result["nextPageToken"] = token;
+        if (settings.All) result["pages"] = pages;
 
-        if (root.TryGetProperty("resultSizeEstimate", out var estimate) && estimate.TryGetInt64(out var size))
-            result["resultSizeEstimate"] = size;
+        // A caller iterating `messages` would otherwise walk straight into entries that carry
+        // no headers, having seen a `count` that says they are all there.
+        if (failed > 0)
+        {
+            result["failed"] = failed;
+            result["note"] = $"{failed} of {rows.Count} messages could not be fetched and carry "
+                           + "an `error` field instead of headers. Retry, or use --ids-only.";
+        }
+
+        if (!string.IsNullOrEmpty(nextToken)) result["nextPageToken"] = nextToken;
+        if (estimate is not null) result["resultSizeEstimate"] = estimate;
 
         return result;
+    }
+
+    public static string ListPath(string query, int limit, string? pageToken, Settings settings)
+    {
+        var url = new StringBuilder("messages?maxResults=" + limit);
+        if (query.Length > 0) url.Append("&q=").Append(Uri.EscapeDataString(query));
+        if (!string.IsNullOrEmpty(pageToken)) url.Append("&pageToken=").Append(Uri.EscapeDataString(pageToken));
+        if (settings.IncludeSpamTrash) url.Append("&includeSpamTrash=true");
+        foreach (var label in settings.Labels) url.Append("&labelIds=").Append(Uri.EscapeDataString(label));
+        return url.ToString();
     }
 
     /// <summary>
@@ -122,24 +184,27 @@ public sealed class SearchCommand : MailboxCommand<SearchCommand.Settings>
     /// and one failed fetch degrades that entry instead of the whole search. See spec G07.
     /// </summary>
     private static async Task<List<object>> HydrateAsync(
-        GmailApiClient client, List<string> ids, int concurrency, CancellationToken ct)
+        GmailApiClient client, List<(string Id, string ThreadId)> ids, int concurrency, CancellationToken ct)
     {
         var results = new object?[ids.Count];
         using var gate = new SemaphoreSlim(concurrency);
 
-        var tasks = ids.Select(async (id, index) =>
+        var tasks = ids.Select(async ((string Id, string ThreadId) entry, int index) =>
         {
             await gate.WaitAsync(ct);
             try
             {
-                using var doc = await client.GetAsync($"messages/{id}?format=full&fields={Uri.EscapeDataString(GmailFields.Structure)}", ct);
+                using var doc = await client.GetAsync($"messages/{entry.Id}?format=full&fields={Uri.EscapeDataString(GmailFields.Structure)}", ct);
                 results[index] = MessageRenderer.Summary(doc.RootElement);
             }
             catch (GmailException ex)
             {
                 results[index] = new Dictionary<string, object?>
                 {
-                    ["id"] = id,
+                    ["id"] = entry.Id,
+                    // The listing already told us this, and a caller grouping by thread should
+                    // not lose the row just because its headers did not arrive.
+                    ["threadId"] = entry.ThreadId,
                     ["error"] = "fetch_failed",
                     ["detail"] = ex.Message
                 };

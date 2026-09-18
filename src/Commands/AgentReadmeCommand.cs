@@ -90,8 +90,10 @@ public sealed class AgentReadmeCommand : GmailCommand<AgentReadmeCommand.Setting
         ## Reading
 
             gmail search "<gmail query>" -a <account> [--limit N] [--page-token TOKEN]
+            gmail search "<gmail query>" -a <account> --ids-only --all [--max N]
             gmail message get <message-id> -a <account> [--body markdown|text|html|none|snippet]
             gmail thread get <thread-id> -a <account> [--max-messages N]
+            gmail thread get -a <account> --ids-from ./ids.txt --out-dir ./threads
             gmail message attachments <message-id> -a <account>
             gmail attachment download <message-id> -a <account> --all --out-dir ./files
             gmail label list -a <account>
@@ -108,6 +110,33 @@ public sealed class AgentReadmeCommand : GmailCommand<AgentReadmeCommand.Setting
             filename:pdf                  larger:5M        in:anywhere
 
         Combine them: `gmail search "from:stripe.com has:attachment newer_than:30d" -a work`
+
+        ## Enumerating a lot of mail
+
+        A plain `search` fetches every result individually to fill in its headers, so
+        `--limit 50` is fifty API calls. That is the right trade when you are going to read the
+        results, and the wrong one when you only want to know *which* messages exist.
+
+        **`--ids-only` returns `id` and `threadId` straight from the listing** — one call per
+        page instead of one per message, and no rate limiting to work around:
+
+            gmail search "in:sent" -a work --ids-only --all --max 5000
+
+        `--all` follows `nextPageToken` for you and stops at `--max`. Use it with `--ids-only`;
+        without it, a large `--all` is refused, because it would be one fetch per message.
+
+        Then fetch only what you actually need — `thread get` for the ones that matter,
+        `--group-threads` to collapse a sent folder down to one row per conversation.
+
+        When that is thousands of threads, do **not** loop the tool in a shell. Pass the ids
+        in a file and let one process pace itself:
+
+            gmail thread get -a work --ids-from ./ids.txt --out-dir ./threads
+
+        It writes one document per thread, named `<threadId>.yaml`, and prints a manifest
+        (`requested`, `written`, `skipped`, `failed`) rather than the mail itself. Threads whose
+        file already exists are skipped, so re-running after an interruption resumes — pass
+        `--overwrite` to refresh them.
 
         ## Writing drafts
 
@@ -152,6 +181,9 @@ public sealed class AgentReadmeCommand : GmailCommand<AgentReadmeCommand.Setting
         ## Pagination
 
         A result carrying `nextPageToken` has more. Pass it back as `--page-token` before
-        concluding that a search found everything.
+        concluding that a search found everything, or pass `--all` and let the tool walk it.
+
+        A search result carrying `failed:` had that many messages fail to fetch. Those entries
+        are in `messages` with an `error` field instead of headers — `count` includes them.
         """;
 }

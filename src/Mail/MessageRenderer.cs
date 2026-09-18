@@ -147,7 +147,8 @@ public static partial class MessageRenderer
 
         for (var i = 0; i < lines.Length; i++)
         {
-            if (AttributionLine().IsMatch(lines[i]) || OriginalMessageLine().IsMatch(lines[i]))
+            if (IsAttributionAt(lines, i) || OriginalMessageLine().IsMatch(lines[i])
+                || IsForwardedHeaderAt(lines, i))
             {
                 cut = i;
                 break;
@@ -159,6 +160,56 @@ public static partial class MessageRenderer
 
         return cut == lines.Length ? body : string.Join('\n', lines[..cut]).TrimEnd();
     }
+
+    /// <summary>
+    /// "On &lt;date&gt;, &lt;person&gt; wrote:" is one sentence but not reliably one line. Apple Mail
+    /// and Outlook on the web put it in a table or a run of divs, and converting that to text
+    /// leaves it broken across up to four indented lines:
+    /// <code>
+    ///     On
+    ///     Thu, 2 Jul at  6:06 PM
+    ///     ,  Paul Dougan &lt;pdougan@me.com&gt;  wrote:
+    /// </code>
+    /// Matching only a whole line silently keeps every one of those quotes, which is how a
+    /// two-sentence reply comes back carrying the entire thread beneath it.
+    /// </summary>
+    private static bool IsAttributionAt(string[] lines, int index)
+    {
+        if (!AttributionStart().IsMatch(lines[index])) return false;
+        if (AttributionLine().IsMatch(lines[index])) return true;
+
+        // Only a wrapped attribution continues onto the next line, and it does so as short
+        // fragments with no paragraph break. Prose that happens to open with "On" and end in
+        // "wrote:" several lines later is a sentence, not a quote header — joining across a
+        // blank line or a full-width line would cut the message in half.
+        var window = new StringBuilder(lines[index].Trim());
+        for (var next = index + 1; next < lines.Length && next <= index + 4; next++)
+        {
+            var line = lines[next].Trim();
+            if (line.Length == 0 || lines[next - 1].Trim().Length > 60) return false;
+
+            window.Append(' ').Append(line);
+            if (AttributionLine().IsMatch(Collapse(window.ToString()))) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Outlook quotes by pasting the parent's headers rather than an attribution line. "From:"
+    /// alone is too common in prose to cut on, so require the "Sent:"/"Date:" that follows it.
+    /// </summary>
+    private static bool IsForwardedHeaderAt(string[] lines, int index)
+    {
+        if (!HeaderFrom().IsMatch(lines[index])) return false;
+
+        for (var span = 1; span <= 3 && index + span < lines.Length; span++)
+            if (HeaderSentOrDate().IsMatch(lines[index + span])) return true;
+
+        return false;
+    }
+
+    private static string Collapse(string value) => WhitespaceRun().Replace(value, " ").Trim();
 
     /// <summary>Cuts at a paragraph boundary where one is available, so the tail isn't mid-sentence.</summary>
     public static (string Text, int Omitted, int Total) Truncate(string body, int maxChars)
@@ -305,6 +356,19 @@ public static partial class MessageRenderer
     [GeneratedRegex(@"^\s*-{2,}\s*(Original Message|Ursprungligt meddelande|Forwarded message)\s*-{2,}\s*$",
         RegexOptions.IgnoreCase)]
     private static partial Regex OriginalMessageLine();
+
+    /// <summary>The first word of an attribution, which may be all this line holds.</summary>
+    [GeneratedRegex(@"^\s*(On|Den|Am|Le|El)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex AttributionStart();
+
+    [GeneratedRegex(@"^\s*\*{0,2}From:\*{0,2}\s*\S", RegexOptions.IgnoreCase)]
+    private static partial Regex HeaderFrom();
+
+    [GeneratedRegex(@"^\s*\*{0,2}(Sent|Date|Skickat|Gesendet):\*{0,2}\s*\S", RegexOptions.IgnoreCase)]
+    private static partial Regex HeaderSentOrDate();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRun();
 }
 
 public sealed record AttachmentPart(string AttachmentId, string Filename, string MimeType, long Size, bool Inline);

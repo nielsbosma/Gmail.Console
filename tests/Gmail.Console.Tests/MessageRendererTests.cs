@@ -69,6 +69,52 @@ public class MessageRendererTests
     }
 
     [Fact]
+    public void TrimQuotedReply_handles_an_attribution_broken_across_lines()
+    {
+        // What Apple Mail and Outlook on the web actually produce: the attribution lives in a
+        // table, and converting it to text leaves one sentence spread over indented fragments.
+        var body = "Hi Paul,\n\nChose Mac here: https://filestar.com/download\n\n"
+                 + "                            On\n"
+                 + "                            Tue, 4 Aug at 10:59 AM\n"
+                 + "                            ,  Paul Dougan <pdougan@me.com>  wrote:\n\n"
+                 + "                             So what do I do about it?";
+
+        var trimmed = MessageRenderer.TrimQuotedReply(body);
+
+        Assert.Equal("Hi Paul,\n\nChose Mac here: https://filestar.com/download", trimmed);
+    }
+
+    [Fact]
+    public void TrimQuotedReply_does_not_cut_prose_that_merely_starts_with_on()
+    {
+        // Same words, but a paragraph break and full-width lines mean this is someone talking,
+        // not a quote header. Joining across it would delete the rest of their message.
+        var body = "On Monday the conversion failed again.\n\n"
+                 + "I asked your colleague about it and here is what they wrote:\n\n"
+                 + "that it was a known issue.";
+
+        Assert.Equal(body, MessageRenderer.TrimQuotedReply(body));
+    }
+
+    [Fact]
+    public void TrimQuotedReply_handles_a_pasted_outlook_header_block()
+    {
+        var body = "Cancelled, thanks.\n\nFrom: Support <info@filestar.com>\nSent: 4 August 2026 10:59\n"
+                 + "To: Paul\nSubject: Re: Plan\n\nOlder text.";
+
+        Assert.Equal("Cancelled, thanks.", MessageRenderer.TrimQuotedReply(body));
+    }
+
+    [Fact]
+    public void TrimQuotedReply_keeps_a_from_line_that_is_not_a_header_block()
+    {
+        // No Sent:/Date: follows, so this is a sentence about where a file came from.
+        var body = "From: the scanner, the PDF is fine.\n\nIt is only Filestar that rejects it.";
+
+        Assert.Equal(body, MessageRenderer.TrimQuotedReply(body));
+    }
+
+    [Fact]
     public void TrimQuotedReply_keeps_a_body_with_no_quoted_section()
     {
         const string body = "Just a normal message.\n\nWith two paragraphs.";

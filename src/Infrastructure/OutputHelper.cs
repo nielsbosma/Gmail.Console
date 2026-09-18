@@ -23,15 +23,20 @@ public static class OutputHelper
         .WithEventEmitter(next => new LiteralMultilineEmitter(next))
         .Build();
 
-    public static void Write(object data, string format)
+    public static void Write(object data, string format) =>
+        System.Console.Out.WriteLine(Serialize(data, format));
+
+    /// <summary>
+    /// The same rendering <see cref="Write"/> puts on stdout, for payloads that go to a file
+    /// instead — a bulk fetch writing one document per thread.
+    /// </summary>
+    public static string Serialize(object data, string format)
     {
         var pruned = Prune(data) ?? new Dictionary<string, object?>();
 
-        var text = format.Equals("json", StringComparison.OrdinalIgnoreCase)
+        return format.Equals("json", StringComparison.OrdinalIgnoreCase)
             ? JsonSerializer.Serialize(pruned, JsonOptions)
             : YamlSerializer.Serialize(pruned).TrimEnd();
-
-        System.Console.Out.WriteLine(text);
     }
 
     /// <summary>

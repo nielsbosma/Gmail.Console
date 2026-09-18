@@ -41,8 +41,7 @@ public sealed class GmailApiClient : IDisposable
 
     private async Task<JsonDocument> SendAsync(HttpMethod method, string path, object? body, CancellationToken ct)
     {
-        const int maxAttempts = 5;
-        var delay = TimeSpan.FromSeconds(1);
+        const int maxAttempts = 6;
 
         for (var attempt = 1; ; attempt++)
         {
@@ -69,10 +68,9 @@ public sealed class GmailApiClient : IDisposable
 
             if (ShouldRetry(response.StatusCode, text) && attempt < maxAttempts)
             {
-                var wait = response.Headers.RetryAfter?.Delta ?? Jitter(delay);
+                var wait = response.Headers.RetryAfter?.Delta ?? Backoff(attempt, text);
                 if (_verbose) OutputHelper.Status($"  retrying in {wait.TotalSeconds:0.0}s (attempt {attempt}/{maxAttempts})");
                 await Task.Delay(wait, ct);
-                delay *= 2;
                 continue;
             }
 
@@ -110,10 +108,31 @@ public sealed class GmailApiClient : IDisposable
 
     private static bool IsRateLimit(string body) =>
         body.Contains("rateLimitExceeded", StringComparison.OrdinalIgnoreCase) ||
-        body.Contains("userRateLimitExceeded", StringComparison.OrdinalIgnoreCase);
+        body.Contains("userRateLimitExceeded", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("Quota exceeded", StringComparison.OrdinalIgnoreCase);
 
-    private static TimeSpan Jitter(TimeSpan baseDelay) =>
-        TimeSpan.FromMilliseconds(Random.Shared.Next(0, (int)baseDelay.TotalMilliseconds));
+    /// <summary>
+    /// Google meters two different things and they need two different waits. The moving
+    /// 250 units/second average recovers almost immediately, so a second or two clears it.
+    /// The "Units per minute per user" quota does not: the window has to roll over, and no
+    /// amount of retrying inside it succeeds. Climbing 1-2-4-8s and giving up at 15 - which
+    /// is what this used to do - exhausts every attempt inside a window that was never going
+    /// to let us through, and reports a hard failure for something that only needed waiting.
+    /// </summary>
+    public static TimeSpan Backoff(int attempt, string body)
+    {
+        var ceiling = IsPerMinuteQuota(body)
+            ? TimeSpan.FromSeconds(Math.Min(20 * attempt, 65))   // 20, 40, 60, 65, 65
+            : TimeSpan.FromSeconds(Math.Min(Math.Pow(2, attempt), 32));
+
+        // Equal jitter: half the wait is fixed so retries still spread out, but a burst of
+        // parallel fetches cannot all draw a near-zero delay and stampede the limiter again.
+        var half = ceiling.TotalMilliseconds / 2;
+        return TimeSpan.FromMilliseconds(half + Random.Shared.NextDouble() * half);
+    }
+
+    private static bool IsPerMinuteQuota(string body) =>
+        body.Contains("per minute", StringComparison.OrdinalIgnoreCase);
 
     private GmailException Translate(HttpStatusCode status, string body, int attempts)
     {
@@ -131,7 +150,7 @@ public sealed class GmailApiClient : IDisposable
                 ErrorCode.RateLimited,
                 $"Gmail rate limit still exceeded after {attempts} attempts.",
                 detail,
-                "Wait a few seconds and retry, or lower --concurrency."),
+                RateLimitRemediation(body)),
 
             HttpStatusCode.Forbidden => new GmailException(
                 ErrorCode.AuthRequired,
@@ -143,7 +162,7 @@ public sealed class GmailApiClient : IDisposable
                 ErrorCode.RateLimited,
                 $"Gmail rate limit still exceeded after {attempts} attempts.",
                 detail,
-                "Wait a few seconds and retry."),
+                RateLimitRemediation(body)),
 
             HttpStatusCode.NotFound => new GmailException(
                 ErrorCode.NotFound, "Not found.", detail),
@@ -155,6 +174,11 @@ public sealed class GmailApiClient : IDisposable
                 ErrorCode.Error, $"Gmail returned {(int)status} {status}.", detail)
         };
     }
+
+    private static string RateLimitRemediation(string body) => IsPerMinuteQuota(body)
+        ? "The per-minute quota is exhausted; wait 60s before retrying. Bulk work should use "
+          + "`search --ids-only`, which costs one call per page instead of one per message."
+        : "Wait a few seconds and retry, or lower --concurrency.";
 
     private static string? ExtractMessage(string body)
     {

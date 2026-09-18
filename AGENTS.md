@@ -222,10 +222,38 @@ per-user budget of **250 units/second** (moving average):
 | `labels.list`, `getProfile` | 1 |
 | `drafts.send`, `messages.send` | 100 |
 
-`search --limit 50` is ~255 units, which is why hydration runs at `--concurrency 5` by default.
-Rate limiting arrives as a `429` **or** a `403` with reason `rateLimitExceeded` /
-`userRateLimitExceeded`; `GmailApiClient.ShouldRetry` handles both, with five attempts,
-exponential backoff, full jitter and `Retry-After` when present.
+`search --limit 50` is ~255 units, which is why hydration runs at `--concurrency 5` by default —
+and why `--ids-only` exists. It skips `HydrateAsync` entirely and answers from the listing, so a
+page costs 5 units instead of 255. Anything that enumerates rather than reads should use it;
+`--all` paginates and is refused above `--max 500` without it.
+
+There are **two** quotas and they behave differently. The moving 250 units/second average
+recovers immediately. The separate *"Units per minute per user"* budget does not — the window
+has to roll over, and every retry inside it fails. `GmailApiClient.Backoff` tells them apart on
+the `per minute` substring and waits 20/40/60s for the second kind instead of climbing
+1-2-4-8s and giving up at 15, which is what it used to do: six attempts entirely inside a window
+that was never going to admit them, reported as a hard failure. Rate limiting arrives as a `429`
+**or** a `403` with reason `rateLimitExceeded` / `userRateLimitExceeded` / `Quota exceeded`;
+`ShouldRetry` handles all of them, with `Retry-After` taking precedence when present.
+
+`thread get` has two shapes behind one command: a single id renders to stdout, and
+`--ids-from <file> --out-dir <dir>` writes one document per thread and prints only a manifest.
+The bulk path exists because a shell loop over a few thousand threads pays a process start each
+time and resets the backoff state between them, so it cannot pace itself against the limiter.
+It skips threads already on disk, which is what makes an interrupted run resumable; a single
+thread that fails is recorded in `errors` rather than ending the run.
+
+**`TrimQuotedReply` matches an attribution across lines, not just within one.** Apple Mail and
+Outlook on the web put "On &lt;date&gt;, &lt;person&gt; wrote:" in a table, so converting to text leaves
+one sentence over three or four indented fragments. A single-line regex silently keeps every
+such quote, which is how a two-sentence reply comes back carrying the whole thread. The join
+stops at a blank line or a line over 60 characters — that is the guard against cutting prose
+that opens with "On" and reaches "wrote:" a paragraph later.
+
+**A hydration failure degrades one row, not the search.** The entry keeps its `id` and
+`threadId` — the listing already knew both — and carries `error`/`detail` instead of headers.
+The result then reports `failed:` and a `note`, because `count` includes those rows and a
+caller iterating `messages` would otherwise hit entries with no `from` or `subject`.
 
 `invalid_grant` on refresh covers revocation, a password change, six months of inactivity, and
 the seven-day expiry that a **Testing**-mode consent screen imposes. That last one is by far
