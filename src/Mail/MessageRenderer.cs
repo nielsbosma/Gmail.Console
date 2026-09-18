@@ -130,7 +130,28 @@ public static partial class MessageRenderer
             Formatting = { RemoveComments = true, CleanupSpaces = true }
         });
 
-        return converter.Convert(html);
+        // ReverseMarkdown leaves a table nested inside a table cell as literal HTML, and
+        // Unknown = Bypass passes through anything else it does not recognise. A mail
+        // protection service's challenge page comes back as twenty kilobytes of raw markup
+        // under a field that promised markdown, which then lands in a model's context.
+        return StripTags(converter.Convert(html));
+    }
+
+    /// <summary>
+    /// Removes HTML tags that survived conversion, leaving their text. Deliberately narrow:
+    /// an address in angle brackets — "Paul &lt;paul@example.com&gt;" — is not a tag and has to
+    /// survive, so the pattern requires a tag name followed by whitespace, '/' or '&gt;'.
+    /// </summary>
+    public static string StripTags(string markdown)
+    {
+        if (string.IsNullOrEmpty(markdown) || !markdown.Contains('<')) return markdown;
+
+        markdown = HtmlComment().Replace(markdown, "");
+        markdown = HtmlTag().Replace(markdown, "");
+
+        // Only spaces and tabs: collapsing newlines here would flatten every paragraph in
+        // every message, and Normalize already handles the vertical whitespace.
+        return SpaceRun().Replace(markdown, " ");
     }
 
     /// <summary>
@@ -369,6 +390,22 @@ public static partial class MessageRenderer
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRun();
+
+    [GeneratedRegex(@"[ \t]{2,}")]
+    private static partial Regex SpaceRun();
+
+    [GeneratedRegex(@"<!--.*?-->|<!\[[^\]]*\]>|<!\[endif\]-->", RegexOptions.Singleline)]
+    private static partial Regex HtmlComment();
+
+    /// <summary>
+    /// A tag name must be followed by whitespace, '&gt;', or the '/&gt;' of a self-closing tag.
+    /// That is what keeps "&lt;paul@example.com&gt;" out of the match — '@' ends the name and
+    /// fails the lookahead — and, less obviously, a markdown autolink: in
+    /// "&lt;https://example.com/a&gt;" the name can only run to "https:", whose next characters
+    /// are "//" rather than "/&gt;". Admitting a bare '/' here silently deletes every autolink.
+    /// </summary>
+    [GeneratedRegex(@"</?[A-Za-z][A-Za-z0-9:-]*(?=[\s>]|/>)[^<>]*>", RegexOptions.Singleline)]
+    private static partial Regex HtmlTag();
 }
 
 public sealed record AttachmentPart(string AttachmentId, string Filename, string MimeType, long Size, bool Inline);

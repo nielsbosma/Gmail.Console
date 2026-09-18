@@ -69,6 +69,41 @@ public class MessageRendererTests
     }
 
     [Fact]
+    public void StripTags_removes_markup_reverse_markdown_left_behind()
+    {
+        // A table nested in a table cell is passed through verbatim, so a mail protection
+        // service's challenge page arrives as kilobytes of markup under --body markdown.
+        var markdown = "| <table width=\"100%\"> <tr> <td> <h1>One click to deliver your email!</h1> "
+                     + "<!-- note --> <p>Hello,</p> </td> </tr> </table> |";
+
+        var stripped = MessageRenderer.StripTags(markdown);
+
+        Assert.DoesNotContain("<table", stripped);
+        Assert.DoesNotContain("<td", stripped);
+        Assert.DoesNotContain("<!--", stripped);
+        Assert.Contains("One click to deliver your email!", stripped);
+        Assert.Contains("Hello,", stripped);
+    }
+
+    [Fact]
+    public void StripTags_keeps_an_address_in_angle_brackets()
+    {
+        // The reason the pattern requires whitespace, '/' or '>' after the tag name.
+        const string markdown = "Forwarded from Paul <pdougan@me.com>, see <https://example.com/a>.";
+
+        Assert.Equal(markdown, MessageRenderer.StripTags(markdown));
+    }
+
+    [Fact]
+    public void StripTags_does_not_flatten_paragraphs()
+    {
+        // Collapsing all whitespace here would run every message into one line.
+        const string markdown = "First para.\n\nSecond para.";
+
+        Assert.Equal(markdown, MessageRenderer.StripTags(markdown));
+    }
+
+    [Fact]
     public void TrimQuotedReply_handles_an_attribution_broken_across_lines()
     {
         // What Apple Mail and Outlook on the web actually produce: the attribution lives in a

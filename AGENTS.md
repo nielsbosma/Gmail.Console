@@ -251,6 +251,14 @@ The limiter charges far more for a burst than the extra requests return, so the 
 and raising it is almost always a mistake. If a bulk run feels slow, lower it rather than
 raise it.
 
+**`--body markdown` must not return HTML.** ReverseMarkdown leaves a table nested inside a
+table cell as literal markup, and `Unknown = Bypass` passes through anything else it does not
+recognise, so a mail protection service's challenge page came back as twenty kilobytes of raw
+markup under a field that promised markdown. `StripTags` runs after the conversion. Its pattern
+is deliberately narrow — a tag name has to be followed by whitespace, `>` or `/>` — because
+`<paul@example.com>` and the autolink `<https://example.com/a>` both have to survive it. Allowing
+a bare `/` after the name deletes every autolink in every message, which a test now pins.
+
 **`TrimQuotedReply` matches an attribution across lines, not just within one.** Apple Mail and
 Outlook on the web put "On &lt;date&gt;, &lt;person&gt; wrote:" in a table, so converting to text leaves
 one sentence over three or four indented fragments. A single-line regex silently keeps every
