@@ -18,14 +18,28 @@ public class BackoffTests
         "User-rate limit exceeded. Retry after 2026-09-18T09:00:00.000Z";
 
     [Fact]
-    public void A_per_minute_quota_waits_long_enough_to_outlast_the_window()
+    public void A_per_minute_quota_eventually_waits_long_enough_to_outlast_the_window()
     {
-        // Four attempts have to add up to more than a minute, or the command reports a hard
-        // failure for something that only needed waiting.
-        var total = Enumerable.Range(1, 4)
-            .Sum(attempt => GmailApiClient.Backoff(attempt, PerMinute).TotalSeconds);
+        // The last attempts have to be able to sit out a whole window, or the command reports a
+        // hard failure for something that only needed waiting.
+        Assert.True(GmailApiClient.Backoff(5, PerMinute).TotalSeconds >= 30);
 
-        Assert.True(total > 60, $"four attempts waited only {total:0.0}s");
+        // ...but the first must not, because the limiter usually clears in seconds and this
+        // wait is paid on every transient throttle across thousands of requests.
+        Assert.True(GmailApiClient.Backoff(1, PerMinute).TotalSeconds <= 5);
+    }
+
+    [Fact]
+    public void A_per_minute_quota_backs_off_further_each_attempt()
+    {
+        // Compare ceilings, not draws: each attempt's minimum must clear the previous maximum.
+        for (var attempt = 1; attempt < 4; attempt++)
+        {
+            var earlier = Enumerable.Range(0, 20).Max(_ => GmailApiClient.Backoff(attempt, PerMinute).TotalSeconds);
+            var later = Enumerable.Range(0, 20).Min(_ => GmailApiClient.Backoff(attempt + 1, PerMinute).TotalSeconds);
+
+            Assert.True(later >= earlier, $"attempt {attempt + 1} did not back off past attempt {attempt}");
+        }
     }
 
     [Fact]

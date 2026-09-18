@@ -121,8 +121,12 @@ public sealed class GmailApiClient : IDisposable
     /// </summary>
     public static TimeSpan Backoff(int attempt, string body)
     {
+        // Both climb, because the "per minute" wording is not a promise about recovery: the
+        // limiter often clears in a second or two and only occasionally needs the whole window.
+        // Opening at 20s would spend that on every transient throttle, which over a few thousand
+        // requests costs far more than the rare genuine exhaustion it was protecting against.
         var ceiling = IsPerMinuteQuota(body)
-            ? TimeSpan.FromSeconds(Math.Min(20 * attempt, 65))   // 20, 40, 60, 65, 65
+            ? TimeSpan.FromSeconds(Math.Min(5 * Math.Pow(2, attempt - 1), 65))  // 5, 10, 20, 40, 65
             : TimeSpan.FromSeconds(Math.Min(Math.Pow(2, attempt), 32));
 
         // Equal jitter: half the wait is fixed so retries still spread out, but a burst of
